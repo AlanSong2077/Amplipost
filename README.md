@@ -150,7 +150,7 @@ scrapling install --force
 ### 使用 Scrapling 增强版（推荐）
 
 ```bash
-# 小红书增强版（已测试）
+# 小红书增强版
 python3 publishers/xhs-publisher/scripts/xhs_publish_scrapling.py \
     --title "AI工具推荐" \
     --content "今天分享5个超好用的AI工具..." \
@@ -181,7 +181,7 @@ python3 publishers/xianyu-publisher/scripts/xianyu_publish_scrapling.py \
 
 | 平台 | 标准版 | Scrapling 增强版 |
 |------|--------|-----------------|
-| 📕 小红书 | `xhs_publish.py` | `xhs_publish_scrapling.py` ✅ 已测试 |
+| 📕 小红书 | `xhs_publish.py` | `xhs_publish_scrapling.py`  |
 | 🐟 闲鱼 | `xianyu_publish.py` | `xianyu_publish_scrapling.py` |
 | 📺 B站 | `bilibili_publish.py` | `bilibili_publish_scrapling.py` |
 | 🎵 抖音 | `douyin_publish.py` | `douyin_publish_scrapling.py` |
