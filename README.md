@@ -332,6 +332,12 @@ git push origin feature/your-feature
 
 ---
 
+## 🙏 致谢
+
+本项目的小红书发布能力基于 [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) 实现，感谢开源！
+
+---
+
 <div align="center">
 
 [![Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-8b5cf6?style=for-the-badge)](https://docs.anthropic.com/claude-code)
