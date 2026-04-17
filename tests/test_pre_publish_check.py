@@ -116,9 +116,10 @@ class TestDouyinEmojiBlock:
 
 class TestExtremeWords:
     def test_extreme_word_warning_not_blocked(self):
+        # 小红书改用 MCP，此处改用闲鱼命令测试极限词检测（极限词检测是通用的）
         code, out, err = run_hook({
             "tool_name": "Bash",
-            "tool_input": {"command": "python3 xhs_publish.py --title '全网最好的产品'"},
+            "tool_input": {"command": "python3 xianyu_publish.py --title '全网最好的产品'"},
         })
         assert code == 0
         data = json.loads(out)
@@ -126,9 +127,10 @@ class TestExtremeWords:
         assert "全网最好" in data["hookSpecificOutput"]["additionalContext"]
 
     def test_quanwang_diyiming_warning(self):
+        # 小红书改用 MCP，此处改用抖音命令测试极限词检测
         code, out, err = run_hook({
             "tool_name": "Bash",
-            "tool_input": {"command": "python3 xhs_publish.py --title '全网第一品牌'"},
+            "tool_input": {"command": "python3 douyin_publish.py --title '全网第一品牌'"},
         })
         assert code == 0
 

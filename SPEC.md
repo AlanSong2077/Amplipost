@@ -181,9 +181,73 @@ python3 {DOUYIN_SKILL_DIR}/scripts/generate_images.py \
 
 ---
 
-## 6. 脚本调用规格
+## 6. 发布调用规格
 
-### 路径查找顺序
+### 6.1 小红书：xiaohongshu-mcp MCP Server
+
+小红书不再使用 Python 脚本，改为调用本地 MCP Server。
+
+**前置检查：**
+```bash
+# 检查服务是否运行
+curl -s --max-time 3 -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"check_login_status","arguments":{}},"id":1}'
+# 无响应 → 服务未启动，提示用户手动启动
+```
+
+**发布图文：**
+```bash
+# 有图
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "publish_content",
+      "arguments": {
+        "title": "{title}",
+        "content": "{content}",
+        "images": ["{img_absolute_path}"],
+        "tags": ["{tag1}", "{tag2}"]
+      }
+    },
+    "id": 1
+  }'
+
+# 无图（文字配图模式）
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "publish_content",
+      "arguments": {
+        "title": "{title}",
+        "content": "{content}",
+        "images": [],
+        "tags": ["{tag1}", "{tag2}"]
+      }
+    },
+    "id": 1
+  }'
+```
+
+**成功判断：**
+```python
+def is_xhs_success(response_json: dict) -> bool:
+    result = response_json.get("result", {})
+    if result.get("isError"):
+        return False
+    text = result.get("content", [{}])[0].get("text", "")
+    return "发布成功" in text or "success" in text.lower()
+```
+
+### 6.2 其他平台：Python 脚本
+
+**路径查找顺序（闲鱼/B站/抖音）：**
 
 ```python
 SKILL_BASE = os.path.expanduser("~/.openclaw/skills")
@@ -202,8 +266,6 @@ def find_script(platform):
     return None  # → 跳过该平台，报告未安装
 ```
 
-### 调用参数规格
-
 **闲鱼：**
 ```bash
 python3 $SCRIPT \
@@ -212,14 +274,6 @@ python3 $SCRIPT \
   --price       "{price}" \
   --new-degree  "{condition}" \
   [--image      "{image_path}"]
-```
-
-**小红书：**
-```bash
-# 无图
-python3 $SCRIPT --title "{title}" --content "{content}"
-# 有图
-python3 $SCRIPT --title "{title}" --content "{content}" --image "{image_path}"
 ```
 
 **B站：**
@@ -301,13 +355,16 @@ python3 $SCRIPT \
 
 ### PreToolUse[Bash] — 发布前合规检查
 
-**触发条件：** 即将执行包含 `*_publish.py` 的 Bash 命令
+**触发条件：** 即将执行包含 `*_publish.py` 的 Bash 命令（闲鱼/B站/抖音）
+
+> 注意：小红书发布改为 MCP curl 调用（`http://localhost:18060/mcp`），不经过此 hook。
+> 小红书的合规检查在 content-coordinator 生成内容阶段完成。
 
 **输入（stdin JSON）：**
 ```json
 {
   "tool_name": "Bash",
-  "tool_input": { "command": "python3 ... xhs_publish.py ..." }
+  "tool_input": { "command": "python3 ... xianyu_publish.py ..." }
 }
 ```
 

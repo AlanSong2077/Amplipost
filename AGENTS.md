@@ -46,7 +46,8 @@ content-coordinator          ← 主 Agent，全程调度
 | **content-coordinator** | 解析输入、生成内容、调度流程、报告结果 | 不自评内容质量、不做风控判断 |
 | **content-reviewer** | 独立评审内容质量，给出评分和具体修改建议 | 不生成内容、不做发布决策 |
 | **publish-guard** | 评估发布行为的风控风险，决定放行/延迟/拦截 | 不评价内容质量、不修改内容 |
-| **Skill 脚本** | 纯执行浏览器自动化发布 | 不生成内容、不做任何判断 |
+| **xiaohongshu-mcp** | 小红书发布的底层执行层（Go+go-rod+CDP），监听 localhost:18060 | 不生成内容、不做任何判断 |
+| **Skill 脚本** | 闲鱼/B站/抖音的浏览器自动化发布 | 不生成内容、不做任何判断 |
 
 **分离 reviewer 的原因：** 生成方对自己的内容天然存在主观偏差，容易打高分。独立 reviewer 用统一评分标准，能识别 AI 感词汇、内容同质化等问题。
 
@@ -138,13 +139,33 @@ Agent **停下来询问用户**的情况（仅两种）：
 
 ---
 
-## Skill 脚本（只读，仅执行发布）
+## 小红书发布层：xiaohongshu-mcp MCP Server
+
+小红书发布不再使用 Python/Playwright 脚本，改为调用独立运行的 **xiaohongshu-mcp** 服务。
+
+```
+项目路径: $XHS_MCP_DIR/
+服务地址: http://localhost:18060/mcp  (本地 HTTP MCP 协议)
+底层技术: Go + go-rod + Chrome DevTools Protocol (CDP)
+反风控优势: 无 WebDriver 特征，行为拟人化，Cookie 持久化
+```
+
+**为什么换掉 Playwright：**
+- Playwright 走 WebDriver 协议，`navigator.webdriver=true` 被小红书风控识别
+- xiaohongshu-mcp 走 CDP 直连，无 WebDriver 特征，原作者自用一年无封号
+
+**调用方式：** content-coordinator 通过 `curl` 发送 HTTP POST 到 `http://localhost:18060/mcp`
+
+**工具列表（共 13 个）：** check_login_status, publish_content, publish_with_video, list_feeds, search_feeds, get_feed_detail, post_comment_to_feed, reply_comment_in_feed, user_profile, like_feed, favorite_feed, get_login_qrcode, delete_cookies
+
+详见 `publishers/xhs-publisher/SKILL.md`。
+
+## 其他平台 Skill 脚本（只读，仅执行发布）
 
 以下脚本**不可修改**，只能调用。脚本**不负责内容生成**，只接收已生成好的参数执行浏览器自动化发布：
 
 ```
 publishers/xianyu-publisher/scripts/xianyu_publish.py
-publishers/xhs-publisher/scripts/xhs_publish.py
 publishers/bilibili-publisher/scripts/bilibili_publish.py
 publishers/douyin-publisher/scripts/douyin_publish.py
 publishers/douyin-publisher/scripts/generate_images.py

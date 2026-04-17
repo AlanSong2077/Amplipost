@@ -47,8 +47,13 @@ class TestAlwaysExitsZero:
         code, _, _ = run_hook(make_payload("python3 xianyu_publish.py", "error", exit_code=1))
         assert code == 0
 
-    def test_xhs_success_exits_zero(self):
-        code, _, _ = run_hook(make_payload("python3 xhs_publish.py", "/publish/success"))
+    def test_xhs_mcp_curl_exits_zero(self):
+        # 小红书改用 MCP curl 调用，不再经过 *_publish.py hook
+        # hook 对非 *_publish.py 命令应直接放行
+        code, _, _ = run_hook(make_payload(
+            "curl -s -X POST http://localhost:18060/mcp -H 'Content-Type: application/json' -d '{}'",
+            '{"result":{"content":[{"text":"发布成功"}]}}'
+        ))
         assert code == 0
 
     def test_bilibili_exits_zero(self):

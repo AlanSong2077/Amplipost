@@ -1,108 +1,221 @@
 ---
 name: xhs-publisher
-description: 小红书（RED/XHS）自动发布助手。支持文字配图模式（小红书 AI 自动生成配图）和上传图片模式。复刻官方能力：内容生成 + Playwright 自动化发布 + 持久化登录态。触发词：发布小红书、发小红书笔记、发XHS、发布到小红书、小红书自动发布、xhs publisher。
+description: 小红书（RED/XHS）自动发布助手。基于 xiaohongshu-mcp MCP Server，通过 HTTP API 调用实现发布、搜索、互动等功能。底层使用 go-rod + CDP 直连 Chromium，反风控能力强，已验证稳定运行一年无封号。触发词：发布小红书、发小红书笔记、发XHS、发布到小红书、小红书自动发布、xhs publisher。
 ---
 
-# 小红书自动发布 Skill
+# 小红书发布 Skill（xiaohongshu-mcp 版）
 
-## 使用模式
+## 架构说明
 
-### 模式一：内容生成 + 自动发布（推荐）
-
-内容生成由 **content-coordinator Agent** 负责，Skill 仅执行发布。Agent 生成好标题和正文后，直接调用本 Skill 脚本发布。
-
-### 模式二：直接发布
-
-用户直接提供标题和正文，跳过生成步骤直接调用脚本发布。
-
----
-
-## 发布技术流程
+本 Skill 不再使用 Playwright Python 脚本，改为调用 **xiaohongshu-mcp MCP Server**（Go + go-rod + CDP）。
 
 ```
-1. 启动 Playwright Chromium（持久化 profile，复用登录态）
-   - 视口固定为 1440x900（确保所有按钮在可视区域内）
-2. 导航到 creator.xiaohongshu.com/publish/publish?source=official
-3. 检测登录态 → 未登录则等待手动扫码（90s）
-4. JS 点击「上传图文」Tab → 等待 1.5s
-5a. 【上传图片模式】暴露 file input → set_input_files → 等待 8s
-5b. 【文字配图模式】6步完整流程：
-    ① 点击「文字配图」按钮 → 等待 2s
-    ② wait_for_selector 等待 ProseMirror 编辑器出现（最多 8s）
-    ③ execCommand('insertText') 输入配图文字
-    ④ 轮询检测 .edit-text-button-text 的 disabled class 消失 → 点击「生成图片」
-    ⑤ 轮询检测 .overview-footer button 出现（最多 20s）
-    ⑥ 点击「下一步」→ 验证标题输入框出现
-6. fill 填写标题（input[placeholder*="标题"]）
-7. 正文编辑器（ProseMirror）：
-   - 聚焦 → Meta+a 全选 → Backspace 清空
-   - navigator.clipboard.writeText → Meta+v 粘贴
-   - 降级：逐段 keyboard.type()
-8. click button:has-text("发布")
-9. 等待跳转 /publish/success → 截图确认
+content-coordinator Agent
+        │
+        │  HTTP POST http://localhost:18060/mcp
+        ▼
+xiaohongshu-mcp MCP Server（本地 Go 进程，端口 18060）
+        │
+        │  Chrome DevTools Protocol
+        ▼
+Chromium 浏览器（无头模式）
+        │
+        ▼
+小红书网页端
 ```
 
-**文字配图模式关键机制：**
-- 视口从 428x598 改为 **1440x900**，避免按钮被遮挡
-- 「下一步」改为**轮询等待** `.overview-footer` 出现后再点击，不再盲目等待固定时间
-- 增加**进入编辑页验证**：检测 `input[placeholder*="标题"]` 是否存在，失败则报错终止
+**为什么换掉 Playwright：**
+- Playwright 走 WebDriver 协议，`navigator.webdriver=true` 特征被小红书风控识别
+- xiaohongshu-mcp 走 CDP 直连，无 WebDriver 特征，行为模拟更接近真人
+- 原作者自用一年无封号，已有大量用户验证
 
 ---
 
-## 快速运行
+## 前置：启动 xiaohongshu-mcp 服务
 
-### 前置安装（首次，在目标电脑上执行）
+### 首次登录（只需一次）
+
 ```bash
-pip install playwright -i https://mirrors.aliyun.com/pypi/simple/
-python3 -m playwright install chromium
+# macOS Apple Silicon
+cd $XHS_MCP_DIR
+./xiaohongshu-login-darwin-arm64
+
+# 或从源码运行
+go run cmd/login/main.go
 ```
 
-### CLI 调用
+扫码登录后，Cookie 自动保存到 `cookies.json`，后续无需重复登录。
+
+### 启动 MCP 服务
+
 ```bash
-SKILL_DIR=~/.openclaw/skills/xhs-publisher
+cd $XHS_MCP_DIR
 
-# 文字配图模式（指定配图文字）
-python3 $SKILL_DIR/scripts/xhs_publish.py \
-  --title "申请XXX被拒？这3个坑99%的人都踩过" \
-  --content "正文内容..." \
-  --text-for-image "申请XXX这3个坑别踩" \
-  --workspace ~/Desktop
+# 无头模式（生产推荐）
+go run .
 
-# 文字配图模式（自动用正文前20字）
-python3 $SKILL_DIR/scripts/xhs_publish.py \
-  --title "标题" \
-  --content "正文内容"
-
-# 上传图片模式
-python3 $SKILL_DIR/scripts/xhs_publish.py \
-  --title "标题" \
-  --content "正文内容" \
-  --image "/path/to/img.png"
-
-# 从 JSON 文件读取
-python3 $SKILL_DIR/scripts/xhs_publish.py \
-  --content-file "/path/to/content.json"
+# 有界面模式（调试用）
+go run . -headless=false
 ```
 
-### content.json 格式
-```json
-{
-  "title": "笔记标题（≤20字）",
-  "content": "正文内容（200-300字）",
-  "text_for_image": "配图文字（可选，不填则用正文前20字）",
-  "image": "/path/to/image.png"
-}
+服务启动后监听 `http://localhost:18060`，保持运行。
+
+### 验证服务状态
+
+```bash
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"check_login_status","arguments":{}},"id":1}'
 ```
 
 ---
 
-## 重要注意事项
+## MCP 工具完整列表（共 13 个）
 
-1. **发布必须调用 `xhs_publish.py` Python 脚本**，不要用 browser_action 操作浏览器。
-2. **图片格式**：支持 `.png .jpg .jpeg .webp`，不支持 `.gif`。
-3. **发布成功判断**：最终 URL 包含 `/publish/success` 即为成功。
-4. **首次使用**：脚本会打开浏览器等待扫码，登录态保存在 `~/.catpaw/xhs_browser_profile`，后续无需再登录。
-5. **文字配图模式**：无需准备图片，小红书 AI 自动根据文字生成配图（适合干货类内容）
+| 工具名 | 说明 | 必填参数 |
+|--------|------|---------|
+| `check_login_status` | 检查登录状态 | 无 |
+| `get_login_qrcode` | 获取登录二维码（Base64） | 无 |
+| `delete_cookies` | 重置登录状态 | 无 |
+| `publish_content` | 发布图文笔记 | title, content, images |
+| `publish_with_video` | 发布视频笔记 | title, content, video |
+| `list_feeds` | 获取首页推荐列表 | 无 |
+| `search_feeds` | 搜索笔记 | keyword |
+| `get_feed_detail` | 获取笔记详情+评论 | feed_id, xsec_token |
+| `post_comment_to_feed` | 发表评论 | feed_id, xsec_token, content |
+| `reply_comment_in_feed` | 回复评论 | feed_id, xsec_token, content |
+| `like_feed` | 点赞/取消点赞 | feed_id, xsec_token |
+| `favorite_feed` | 收藏/取消收藏 | feed_id, xsec_token |
+| `user_profile` | 获取用户主页 | user_id, xsec_token |
+
+---
+
+## 发布图文（核心调用）
+
+### HTTP 直接调用
+
+```bash
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "publish_content",
+      "arguments": {
+        "title": "笔记标题（≤20字）",
+        "content": "正文内容（200-300字）",
+        "images": ["/absolute/path/to/image.jpg"],
+        "tags": ["标签1", "标签2"]
+      }
+    },
+    "id": 1
+  }'
+```
+
+### Python 调用封装
+
+```python
+import subprocess, json
+
+def xhs_publish(title: str, content: str, images: list[str] = None, tags: list[str] = None) -> dict:
+    """
+    调用 xiaohongshu-mcp 发布图文笔记
+    images: 本地绝对路径列表，如 ["/Users/xxx/img.jpg"]；无图则传空列表（文字配图模式）
+    tags: 话题标签列表，如 ["AI工具", "效率"]
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "publish_content",
+            "arguments": {
+                "title": title,
+                "content": content,
+                "images": images or [],
+                "tags": tags or []
+            }
+        },
+        "id": 1
+    }
+    result = subprocess.run(
+        ["curl", "-s", "-X", "POST", "http://localhost:18060/mcp",
+         "-H", "Content-Type: application/json",
+         "-d", json.dumps(payload)],
+        capture_output=True, text=True, timeout=120
+    )
+    return json.loads(result.stdout)
+```
+
+### 无图发布（文字配图模式）
+
+xiaohongshu-mcp 的 `publish_content` 要求至少 1 张图片。无图时有两种处理方式：
+
+**方式 A（推荐）：先用 generate_images.py 生成配图，再传给 MCP**
+
+```bash
+# 1. 生成配图
+python3 publishers/douyin-publisher/scripts/generate_images.py \
+  --topic "{主题}" --title "{标题}" \
+  --point1 "{要点1}" --point2 "{要点2}" --point3 "{要点3}"
+# 输出图片路径到 ~/.catpaw/douyin_images/
+
+# 2. 用生成的图片发布到小红书
+# 将图片路径传入 images 参数
+```
+
+**方式 B：使用旧版 Playwright 脚本的文字配图模式（降级备用）**
+
+```bash
+python3 publishers/xhs-publisher/scripts/xhs_publish.py \
+  --title "{title}" --content "{content}"
+```
+
+---
+
+## 发布成功判断
+
+MCP 返回的 JSON 中：
+- `result.content[0].text` 包含 `"发布成功"` 或 `"success"` → 成功
+- `result.isError: true` → 失败，读取 `result.content[0].text` 获取错误原因
+
+```python
+def is_publish_success(response: dict) -> bool:
+    try:
+        result = response.get("result", {})
+        if result.get("isError"):
+            return False
+        text = result.get("content", [{}])[0].get("text", "")
+        return "发布成功" in text or "success" in text.lower()
+    except Exception:
+        return False
+```
+
+---
+
+## 检查服务是否运行
+
+```bash
+# 快速检查
+curl -s http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":0}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('OK' if 'result' in d else 'FAIL')"
+```
+
+如果服务未运行，Agent 应提示用户：
+```
+xiaohongshu-mcp 服务未启动。请在新终端窗口执行：
+cd $XHS_MCP_DIR && go run .
+```
+
+---
+
+## 登录态管理
+
+- Cookie 存储路径：`$XHS_MCP_DIR/cookies.json`
+- Cookie 过期后，重新运行登录工具扫码即可
+- **重要**：同一账号不能同时在多个网页端登录，使用 MCP 期间不要在浏览器登录同一账号
 
 ---
 

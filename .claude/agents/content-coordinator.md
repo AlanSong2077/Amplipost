@@ -120,7 +120,8 @@ maxTurns: 30
   → 调用 generate_images.py 生成信息图，继续执行
 
 小红书（图片可选）
-  → 不传 --image，使用文字配图模式，继续执行
+  → 无图时：images 传空列表 []，xiaohongshu-mcp 使用文字配图模式，继续执行
+  → 有图时：images 传本地绝对路径列表，如 ["/Users/xxx/img.jpg"]
 
 闲鱼 / B站
   → 无图也可发布，继续执行
@@ -164,13 +165,37 @@ maxTurns: 30
 - `price` — 价格（闲鱼必须）
 - `condition` — 新旧程度（闲鱼必须）
 
-### Phase 2：查找脚本路径
+### Phase 2：查找脚本路径 / 检查 MCP 服务
+
+**小红书（xhs）— 使用 xiaohongshu-mcp MCP Server，不使用 Python 脚本：**
+
+```bash
+# 检查 xiaohongshu-mcp 服务是否运行
+XHS_MCP_RESP=$(curl -s --max-time 3 -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"check_login_status","arguments":{}},"id":1}' 2>/dev/null)
+
+if [ -z "$XHS_MCP_RESP" ]; then
+  echo "xiaohongshu-mcp 未运行，正在自动启动..."
+  # 自动后台唤起（含自动安装逻辑）
+  bash "$(pwd)/scripts/start-xhs-mcp.sh" --bg
+  # start-xhs-mcp.sh 会等待服务就绪后退出
+  # 若返回非 0（Cookie 不存在/安装失败），则停下来告知用户
+  if [ $? -ne 0 ]; then
+    echo "ERROR: xiaohongshu-mcp 启动失败"
+    echo "请手动运行：bash scripts/start-xhs-mcp.sh --login  （首次需扫码登录）"
+    # 停下来，这是物理限制（需要用户扫码）
+  fi
+fi
+```
+
+**其他平台（闲鱼/B站/抖音）— 使用 Python 脚本：**
 
 ```bash
 SKILL_BASE="$HOME/.openclaw/skills"
 LOCAL_BASE="$(pwd)/publishers"
 
-# 对每个平台：
+# 对每个非 xhs 平台：
 SCRIPT="$SKILL_BASE/{platform}-publisher/scripts/{platform}_publish.py"
 [ ! -f "$SCRIPT" ] && SCRIPT="$LOCAL_BASE/{platform}-publisher/scripts/{platform}_publish.py"
 [ ! -f "$SCRIPT" ] && echo "SKIP {platform}: 脚本未找到" && continue
@@ -339,12 +364,43 @@ python3 "$XIANYU_SCRIPT" \
   [--image "{image_path}"]
 ```
 
-**小红书：**
+**小红书（通过 xiaohongshu-mcp MCP Server 调用）：**
 ```bash
-# 有图
-python3 "$XHS_SCRIPT" --title "{title}" --content "{content}" --image "{img}"
-# 无图（文字配图模式）
-python3 "$XHS_SCRIPT" --title "{title}" --content "{content}"
+# 有图（images 传本地绝对路径列表）
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "publish_content",
+      "arguments": {
+        "title": "{title}",
+        "content": "{content}",
+        "images": ["{img_absolute_path}"],
+        "tags": ["{tag1}", "{tag2}"]
+      }
+    },
+    "id": 1
+  }'
+
+# 无图（文字配图模式，images 传空列表）
+curl -s -X POST http://localhost:18060/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "publish_content",
+      "arguments": {
+        "title": "{title}",
+        "content": "{content}",
+        "images": [],
+        "tags": ["{tag1}", "{tag2}"]
+      }
+    },
+    "id": 1
+  }'
 ```
 
 **B站：**
@@ -366,7 +422,7 @@ python3 "$DOUYIN_SCRIPT" \
 | 平台 | 成功标志 |
 |------|---------|
 | 闲鱼 | 退出码 0 |
-| 小红书 | stdout 含 `/publish/success` |
+| 小红书 | MCP 响应 `result.content[0].text` 含「发布成功」或「success」，且 `result.isError` 不为 true |
 | B站 | stdout 含「提交成功」 |
 | 抖音 | stdout 含「发布成功」或「审核中」 |
 
