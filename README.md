@@ -14,7 +14,7 @@
 
 <br>
 
-**AmpliPost** 是基于 **Claude Code Multi-Agent 架构**构建的智能营销中台。三个协作 Agent（content-coordinator、content-reviewer、publish-guard）分工明确，配合 Hooks 系统与长期记忆，将「一句话指令」转化为跨平台内容的全自动生产与分发。小红书发布层由 **xiaohongshu-mcp**（Go + go-rod + CDP）驱动，无 WebDriver 特征，反风控能力经一年生产验证——无需人工确认，无需手动操作，全程自主决策。
+**AmpliPost** 是基于 **Claude Code Multi-Agent 架构**构建的智能营销中台。三个协作 Agent（content-coordinator、content-reviewer、publish-guard）分工明确，配合 Hooks 系统与长期记忆，将「一句话指令」转化为跨平台内容的全自动生产与分发。小红书发布层由 **xiaohongshu-mcp**（Go + go-rod + CDP）驱动。——无需人工确认，无需手动操作，全程自主决策。
 
 <br>
 
